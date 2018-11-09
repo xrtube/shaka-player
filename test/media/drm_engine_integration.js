@@ -142,11 +142,9 @@ describe('DrmEngine', function() {
 
     mediaSourceEngine = new shaka.media.MediaSourceEngine(video);
 
-    // Create empty object first and initialize the fields through
-    // [] to allow field names to be expressions.
-    let expectedObject = {};
-    expectedObject[ContentType.AUDIO] = audioStream;
-    expectedObject[ContentType.VIDEO] = videoStream;
+    const expectedObject = new Map();
+    expectedObject.set(ContentType.AUDIO, audioStream);
+    expectedObject.set(ContentType.VIDEO, videoStream);
     await mediaSourceEngine.init(expectedObject, false);
   });
 
@@ -155,8 +153,8 @@ describe('DrmEngine', function() {
       eventManager.destroy(),
       mediaSourceEngine.destroy(),
       networkingEngine.destroy(),
-      drmEngine.destroy(),
     ]);
+    await drmEngine.destroy();
   });
 
   afterAll(function() {
@@ -200,16 +198,16 @@ describe('DrmEngine', function() {
             keyStatusEventSeen.resolve();
           });
 
-          drmEngine.init(manifest, /* offline */ false).then(function() {
+          const variants = shaka.util.StreamUtils.getAllVariants(manifest);
+          drmEngine.initForPlayback(
+              variants, manifest.offlineSessionIds).then(function() {
             return drmEngine.attach(video);
           }).then(function() {
             return mediaSourceEngine.appendBuffer(ContentType.VIDEO,
-                                                  videoInitSegment,
-                                                  null, null);
+                videoInitSegment, null, null, /* hasClosedCaptions */ false);
           }).then(function() {
             return mediaSourceEngine.appendBuffer(ContentType.AUDIO,
-                                                  audioInitSegment,
-                                                  null, null);
+                audioInitSegment, null, null, /* hasClosedCaptions */ false);
           }).then(function() {
             return encryptedEventSeen;
           }).then(function() {
@@ -244,12 +242,10 @@ describe('DrmEngine', function() {
             }
 
             return mediaSourceEngine.appendBuffer(ContentType.VIDEO,
-                                                  videoSegment,
-                                                  null, null);
+                videoSegment, null, null, /* hasClosedCaptions */ false);
           }).then(function() {
             return mediaSourceEngine.appendBuffer(ContentType.AUDIO,
-                                                  audioSegment,
-                                                  null, null);
+                audioSegment, null, null, /* hasClosedCaptions */ false);
           }).then(function() {
             expect(video.buffered.end(0)).toBeGreaterThan(0);
             video.play();

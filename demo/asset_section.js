@@ -66,13 +66,13 @@ shakaDemo.setupAssets_ = function() {
     }
 
     let mimeTypes = [];
-    if (asset.features.indexOf(shakaAssets.Feature.WEBM) >= 0) {
+    if (asset.features.includes(shakaAssets.Feature.WEBM)) {
       mimeTypes.push('video/webm');
     }
-    if (asset.features.indexOf(shakaAssets.Feature.MP4) >= 0) {
+    if (asset.features.includes(shakaAssets.Feature.MP4)) {
       mimeTypes.push('video/mp4');
     }
-    if (asset.features.indexOf(shakaAssets.Feature.MP2TS) >= 0) {
+    if (asset.features.includes(shakaAssets.Feature.MP2TS)) {
       mimeTypes.push('video/mp2t');
     }
     if (!mimeTypes.some(
@@ -112,14 +112,29 @@ shakaDemo.setupAssets_ = function() {
       'click', shakaDemo.load);
   document.getElementById('unloadButton').addEventListener(
       'click', shakaDemo.unload);
-  document.getElementById('licenseServerInput').addEventListener(
-      'input', shakaDemo.onAssetInput_);
-  document.getElementById('manifestInput').addEventListener(
-      'input', shakaDemo.onAssetInput_);
-  document.getElementById('certificateInput').addEventListener(
-      'input', shakaDemo.onAssetInput_);
+
+  const assetInputs = [
+    document.getElementById('licenseServerInput'),
+    document.getElementById('manifestInput'),
+    document.getElementById('certificateInput'),
+  ];
+  for (const input of assetInputs) {
+    input.addEventListener('input', shakaDemo.onAssetInput_);
+    input.addEventListener('keydown', shakaDemo.onAssetKeyDown_);
+  }
 
   return asyncOfflineSetup;
+};
+
+
+/**
+ * @param {!Event} event
+ * @private
+ */
+shakaDemo.onAssetKeyDown_ = function(event) {
+  if (event.key == 'Enter') {
+    shakaDemo.load();
+  }
 };
 
 
@@ -196,7 +211,7 @@ shakaDemo.preparePlayer_ = function(asset) {
     'org.w3.clearkey',
   ];
   let config = /** @type {shaka.extern.PlayerConfiguration} */(
-      {abr: {}, streaming: {}, manifest: {dash: {}}});
+      {abr: {}, streaming: {}, manifest: {dash: {}}, offline: {}});
   config.drm = /** @type {shaka.extern.DrmConfiguration} */({
     advanced: {}});
   commonDrmSystems.forEach(function(system) {
@@ -226,6 +241,12 @@ shakaDemo.preparePlayer_ = function(asset) {
       certificateUri: document.getElementById('certificateInput').value,
     });
   }
+
+  // Any storage operation should update our progress label.
+  config.offline.progressCallback = function(data, percent) {
+    let progress = document.getElementById('progress');
+    progress.textContent = (percent * 100).toFixed(2);
+  };
 
   player.resetConfiguration();
 
@@ -333,7 +354,7 @@ shakaDemo.load = function() {
     }
 
     // Disallow the casting of offline content.
-    let isOffline = asset.manifestUri.indexOf('offline:') == 0;
+    let isOffline = asset.manifestUri.startsWith('offline:');
     shakaDemo.controls_.allowCast(!isOffline);
 
     (asset.extraText || []).forEach(function(extraText) {

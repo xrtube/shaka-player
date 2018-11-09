@@ -17,6 +17,7 @@
 
 // Test basic manifest parsing functionality.
 describe('DashParser Manifest', function() {
+  const ContentType = shaka.util.ManifestParserUtils.ContentType;
   const Dash = shaka.test.Dash;
 
   /** @type {!shaka.test.FakeNetworkingEngine} */
@@ -136,52 +137,42 @@ describe('DashParser Manifest', function() {
           .anyTimeline()
           .minBufferTime(75)
           .addPeriod(jasmine.any(Number))
-            .addVariant(jasmine.any(Number))
+            .addPartialVariant()
               .language('en')
               .bandwidth(200)
               .primary()
-              .addVideo(jasmine.any(Number))
-                .anySegmentFunctions()
-                .anyInitSegment()
+              .addPartialStream(ContentType.VIDEO)
                 .presentationTimeOffset(0)
                 .mime('video/mp4', 'avc1.4d401f')
                 .bandwidth(100)
                 .frameRate(1000000 / 42000)
                 .size(768, 576)
-              .addAudio(jasmine.any(Number))
-                .anySegmentFunctions()
-                .anyInitSegment()
+              .addPartialStream(ContentType.AUDIO)
                 .bandwidth(100)
                 .presentationTimeOffset(0)
                 .mime('audio/mp4', 'mp4a.40.29')
                 .primary()
                 .roles(['main'])
-            .addVariant(jasmine.any(Number))
+            .addPartialVariant()
               .language('en')
               .bandwidth(150)
               .primary()
-              .addVideo(jasmine.any(Number))
-                .anySegmentFunctions()
-                .anyInitSegment()
+              .addPartialStream(ContentType.VIDEO)
                 .presentationTimeOffset(0)
                 .mime('video/mp4', 'avc1.4d401f')
                 .bandwidth(50)
                 .frameRate(1000000 / 42000)
                 .size(576, 432)
-              .addAudio(jasmine.any(Number))
-                .anySegmentFunctions()
-                .anyInitSegment()
+              .addPartialStream(ContentType.AUDIO)
                 .bandwidth(100)
                 .presentationTimeOffset(0)
                 .mime('audio/mp4', 'mp4a.40.29')
                 .primary()
                 .roles(['main'])
-            .addTextStream(jasmine.any(Number))
+            .addPartialStream(ContentType.TEXT)
               .language('es')
               .label('spanish')
               .primary()
-              .anySegmentFunctions()
-              .anyInitSegment()
               .presentationTimeOffset(0)
               .mime('text/vtt')
               .bandwidth(100)
@@ -189,7 +180,6 @@ describe('DashParser Manifest', function() {
               .roles(['caption', 'main'])
         .build());
   });
-
 
   it('skips any periods after one without duration', async () => {
     let periodContents = [
@@ -318,6 +308,103 @@ describe('DashParser Manifest', function() {
         .toEqual(new shaka.media.SegmentReference(1, 0, 30, function() {
           return ['http://example.com/de.vtt'];
         }, 0, null));
+  });
+
+  it('correctly parses closed captions with channels and languages',
+      async () => {
+    const source = [
+      '<MPD minBufferTime="PT75S">',
+      '  <Period id="1" duration="PT30S">',
+      '    <AdaptationSet mimeType="video/mp4" lang="en" group="1">',
+      '      <Accessibility schemeIdUri="urn:scte:dash:cc:cea-608:2015"',
+      '         value="CC1=eng;CC3=swe"/>',
+      '      <Representation bandwidth="200">',
+      '        <SegmentTemplate media="1.mp4" duration="1" />',
+      '      </Representation>',
+      '    </AdaptationSet>',
+      '    <AdaptationSet mimeType="video/mp4" lang="en" group="1">',
+      '      <Accessibility schemeIdUri="urn:scte:dash:cc:cea-608:2015"',
+      '         value="CC1=lang:eng;CC3=lang:swe"/>',
+      '      <Representation bandwidth="200">',
+      '        <SegmentTemplate media="1.mp4" duration="1" />',
+      '      </Representation>',
+      '    </AdaptationSet>',
+      '    <AdaptationSet mimeType="video/mp4" lang="en" group="1">',
+      '      <Accessibility schemeIdUri="urn:scte:dash:cc:cea-608:2015"',
+      '         value="1=lang:eng;3=lang:swe,war:1,er:1"/>',
+      '      <Representation bandwidth="200">',
+      '        <SegmentTemplate media="1.mp4" duration="1" />',
+      '      </Representation>',
+      '    </AdaptationSet>',
+      '  </Period>',
+      '</MPD>',
+    ].join('\n');
+
+    fakeNetEngine.setResponseText('dummy://foo', source);
+
+    const manifest = await parser.start('dummy://foo', playerInterface);
+    // First Representation should be dropped.
+    const period = manifest.periods[0];
+    const stream1 = period.variants[0].video;
+    const stream2 = period.variants[1].video;
+    const stream3 = period.variants[2].video;
+
+    const expectedClosedCaptions = new Map(
+      [['CC1', shaka.util.LanguageUtils.normalize('eng')],
+       ['CC3', shaka.util.LanguageUtils.normalize('swe')]]
+    );
+    expect(stream1.closedCaptions).toEqual(expectedClosedCaptions);
+    expect(stream2.closedCaptions).toEqual(expectedClosedCaptions);
+    expect(stream3.closedCaptions).toEqual(expectedClosedCaptions);
+  });
+
+  it('correctly parses closed captions without channel numbers', async () => {
+    const source = [
+      '<MPD minBufferTime="PT75S">',
+      '  <Period id="1" duration="PT30S">',
+      '    <AdaptationSet mimeType="video/mp4" lang="en" group="1">',
+      '      <Accessibility schemeIdUri="urn:scte:dash:cc:cea-608:2015"',
+      '         value="eng;swe"/>',
+      '      <Representation bandwidth="200">',
+      '        <SegmentTemplate media="1.mp4" duration="1" />',
+      '      </Representation>',
+      '    </AdaptationSet>',
+      '  </Period>',
+      '</MPD>',
+    ].join('\n');
+
+    fakeNetEngine.setResponseText('dummy://foo', source);
+
+    const manifest = await parser.start('dummy://foo', playerInterface);
+    const stream = manifest.periods[0].variants[0].video;
+    const expectedClosedCaptions = new Map(
+      [['CC1', shaka.util.LanguageUtils.normalize('eng')],
+       ['CC3', shaka.util.LanguageUtils.normalize('swe')]]
+    );
+    expect(stream.closedCaptions).toEqual(expectedClosedCaptions);
+  });
+
+  it('correctly parses closed captions with no channel and language info',
+      async () => {
+    const source = [
+      '<MPD minBufferTime="PT75S">',
+      '  <Period id="1" duration="PT30S">',
+      '    <AdaptationSet mimeType="video/mp4" lang="en" group="1">',
+      '      <Accessibility schemeIdUri="urn:scte:dash:cc:cea-608:2015"/>',
+      '      <Representation bandwidth="200">',
+      '        <SegmentTemplate media="1.mp4" duration="1" />',
+      '      </Representation>',
+      '    </AdaptationSet>',
+      '  </Period>',
+      '</MPD>',
+    ].join('\n');
+
+    fakeNetEngine.setResponseText('dummy://foo', source);
+
+    const manifest = await parser.start('dummy://foo', playerInterface);
+    const stream = manifest.periods[0].variants[0].video;
+    const expectedClosedCaptions = new Map([['CC1', 'und']]);
+    expect(stream.closedCaptions).toEqual(expectedClosedCaptions);
   });
 
   it('correctly parses UTF-8', async () => {
@@ -1079,5 +1166,69 @@ describe('DashParser Manifest', function() {
     expect(variant.audio.originalId).toEqual('audio-en');
     expect(variant.video.originalId).toEqual('video-sd');
     expect(textStream.originalId).toEqual('text-en');
+  });
+
+  it('override manifest value if ignoreMinBufferTime is true', async () => {
+    let manifestText = [
+      '<MPD minBufferTime="PT75S">',
+      '  <Period id="1" duration="PT30S">',
+      '    <AdaptationSet id="1" mimeType="video/mp4">',
+      '      <Representation id="video-sd" width="640" height="480">',
+      '        <BaseURL>v-sd.mp4</BaseURL>',
+      '        <SegmentBase indexRange="100-200" />',
+      '      </Representation>',
+      '    </AdaptationSet>',
+      '  </Period>',
+      '</MPD>',
+    ].join('\n');
+
+    fakeNetEngine.setResponseText('dummy://foo', manifestText);
+    parser.configure({
+      retryParameters: shaka.net.NetworkingEngine.defaultRetryParameters(),
+      availabilityWindowOverride: NaN,
+      dash: {
+        clockSyncUri: '',
+        customScheme: function(node) { return null; },
+        ignoreDrmInfo: false,
+        xlinkFailGracefully: false,
+        defaultPresentationDelay: 10,
+        ignoreMinBufferTime: true,
+      },
+    });
+    const manifest = await parser.start('dummy://foo', playerInterface);
+    const minBufferTime = manifest.minBufferTime;
+    expect(minBufferTime).toEqual(0);
+  });
+
+  it('get manifest value if ignoreMinBufferTime is false', async () => {
+    let manifestText = [
+      '<MPD minBufferTime="PT75S">',
+      '  <Period id="1" duration="PT30S">',
+      '    <AdaptationSet id="1" mimeType="video/mp4">',
+      '      <Representation id="video-sd" width="640" height="480">',
+      '        <BaseURL>v-sd.mp4</BaseURL>',
+      '        <SegmentBase indexRange="100-200" />',
+      '      </Representation>',
+      '    </AdaptationSet>',
+      '  </Period>',
+      '</MPD>',
+    ].join('\n');
+
+    fakeNetEngine.setResponseText('dummy://foo', manifestText);
+    parser.configure({
+      retryParameters: shaka.net.NetworkingEngine.defaultRetryParameters(),
+      availabilityWindowOverride: NaN,
+      dash: {
+        clockSyncUri: '',
+        customScheme: function(node) { return null; },
+        ignoreDrmInfo: false,
+        xlinkFailGracefully: false,
+        defaultPresentationDelay: 10,
+        ignoreMinBufferTime: false,
+      },
+    });
+    const manifest = await parser.start('dummy://foo', playerInterface);
+    const minBufferTime = manifest.minBufferTime;
+    expect(minBufferTime).toEqual(75);
   });
 });

@@ -147,13 +147,31 @@ describe('DrmEngine', function() {
     shaka.log.error = originalLogError;
   });
 
+  describe('supportsVariants', function() {
+    it('supports all clear variants', async function() {
+      const manifest = new shaka.test.ManifestGenerator()
+          .addPeriod(0)
+            .addVariant(0)
+              .addDrmInfo('drm.abc')
+              .addDrmInfo('drm.def')
+              .addVideo(1).mime('video/foo', 'vbar').encrypted(false)
+          .build();
+
+      const variants = shaka.util.StreamUtils.getAllVariants(manifest);
+      await drmEngine.initForPlayback(variants, manifest.offlineSessionIds);
+
+      expect(drmEngine.supportsVariant(variants[0])).toBeTruthy();
+    });
+  });
+
   describe('init', function() {
     it('stops on first available key system', async () => {
       // Accept both drm.abc and drm.def.  Only one can be chosen.
       requestMediaKeySystemAccessSpy.and.callFake(
           fakeRequestMediaKeySystemAccess.bind(null, ['drm.abc', 'drm.def']));
 
-      await drmEngine.init(manifest, /* offline */ false);
+      const variants = shaka.util.StreamUtils.getAllVariants(manifest);
+      await drmEngine.initForPlayback(variants, manifest.offlineSessionIds);
       expect(drmEngine.initialized()).toBe(true);
       expect(drmEngine.keySystem()).toBe('drm.abc');
 
@@ -169,7 +187,8 @@ describe('DrmEngine', function() {
           fakeRequestMediaKeySystemAccess.bind(null, []));
 
       try {
-        await drmEngine.init(manifest, /* offline */ false);
+        const variants = shaka.util.StreamUtils.getAllVariants(manifest);
+        await drmEngine.initForPlayback(variants, manifest.offlineSessionIds);
         fail();
       } catch (error) {
         expect(requestMediaKeySystemAccessSpy.calls.count()).toBe(2);
@@ -193,7 +212,8 @@ describe('DrmEngine', function() {
       logErrorSpy.and.stub();
 
       try {
-        await drmEngine.init(manifest, /* offline */ false);
+        const variants = shaka.util.StreamUtils.getAllVariants(manifest);
+        await drmEngine.initForPlayback(variants, manifest.offlineSessionIds);
         fail();
       } catch (error) {
         expect(requestMediaKeySystemAccessSpy.calls.count()).toBe(2);
@@ -209,7 +229,8 @@ describe('DrmEngine', function() {
       requestMediaKeySystemAccessSpy.and.callFake(
           fakeRequestMediaKeySystemAccess.bind(null, ['drm.abc']));
 
-      await drmEngine.init(manifest, /* offline */ false);
+      const variants = shaka.util.StreamUtils.getAllVariants(manifest);
+      await drmEngine.initForPlayback(variants, manifest.offlineSessionIds);
       expect(drmEngine.initialized()).toBe(true);
       let supportedTypes = drmEngine.getSupportedTypes();
       // This is conditional because Edge 14 has a bug that prevents us from
@@ -227,7 +248,8 @@ describe('DrmEngine', function() {
       requestMediaKeySystemAccessSpy.and.callFake(
           fakeRequestMediaKeySystemAccess.bind(null, ['drm.def']));
 
-      await drmEngine.init(manifest, /* offline */ false);
+      const variants = shaka.util.StreamUtils.getAllVariants(manifest);
+      await drmEngine.initForPlayback(variants, manifest.offlineSessionIds);
       expect(drmEngine.initialized()).toBe(true);
       expect(drmEngine.keySystem()).toBe('drm.def');
 
@@ -245,7 +267,8 @@ describe('DrmEngine', function() {
           fakeRequestMediaKeySystemAccess.bind(null, []));
 
       try {
-        await drmEngine.init(manifest, false);
+        const variants = shaka.util.StreamUtils.getAllVariants(manifest);
+        await drmEngine.initForPlayback(variants, manifest.offlineSessionIds);
         fail();
       } catch (error) {
         expect(drmEngine.initialized()).toBe(false);
@@ -275,7 +298,8 @@ describe('DrmEngine', function() {
       requestMediaKeySystemAccessSpy.and.callFake(
           fakeRequestMediaKeySystemAccess.bind(null, []));
 
-      await drmEngine.init(manifest, false);
+      const variants = shaka.util.StreamUtils.getAllVariants(manifest);
+      await drmEngine.initForPlayback(variants, manifest.offlineSessionIds);
 
       // Both key systems were tried, since the first one failed.
       expect(requestMediaKeySystemAccessSpy.calls.count()).toBe(2);
@@ -292,7 +316,8 @@ describe('DrmEngine', function() {
       manifest.periods[0].variants[0].drmInfos[1].keySystem = '';
 
       try {
-        await drmEngine.init(manifest, false);
+        const variants = shaka.util.StreamUtils.getAllVariants(manifest);
+        await drmEngine.initForPlayback(variants, manifest.offlineSessionIds);
         fail();
       } catch (error) {
         expect(drmEngine.initialized()).toBe(false);
@@ -312,7 +337,8 @@ describe('DrmEngine', function() {
       mockMediaKeySystemAccess.createMediaKeys.and.throwError('whoops!');
 
       try {
-        await drmEngine.init(manifest, false);
+        const variants = shaka.util.StreamUtils.getAllVariants(manifest);
+        await drmEngine.initForPlayback(variants, manifest.offlineSessionIds);
         fail();
       } catch (error) {
         expect(drmEngine.initialized()).toBe(false);
@@ -333,7 +359,8 @@ describe('DrmEngine', function() {
           fakeRequestMediaKeySystemAccess.bind(null, []));
 
       try {
-        await drmEngine.init(manifest, /* offline */ false);
+        const variants = shaka.util.StreamUtils.getAllVariants(manifest);
+        await drmEngine.initForPlayback(variants, manifest.offlineSessionIds);
         fail();
       } catch (error) {
         expect(drmEngine.initialized()).toBe(false);
@@ -366,7 +393,9 @@ describe('DrmEngine', function() {
           fakeRequestMediaKeySystemAccess.bind(null, []));
 
       try {
-        await drmEngine.init(manifest, /* offline */ true);
+        const variants = shaka.util.StreamUtils.getAllVariants(manifest);
+        await drmEngine.initForStorage(
+            variants, /* usePersistentLicense */ true);
         fail();
       } catch (error) {
         expect(drmEngine.initialized()).toBe(false);
@@ -395,7 +424,8 @@ describe('DrmEngine', function() {
           .persistentStateRequired = true;
 
       try {
-        await drmEngine.init(manifest, /* offline */ false);
+        const variants = shaka.util.StreamUtils.getAllVariants(manifest);
+        await drmEngine.initForPlayback(variants, manifest.offlineSessionIds);
         fail();
       } catch (error) {
         expect(drmEngine.initialized()).toBe(false);
@@ -423,7 +453,8 @@ describe('DrmEngine', function() {
       config.advanced = {};
 
       drmEngine.configure(config);
-      await drmEngine.init(manifest, /* offline */ false);
+      const variants = shaka.util.StreamUtils.getAllVariants(manifest);
+      await drmEngine.initForPlayback(variants, manifest.offlineSessionIds);
       expect(drmEngine.initialized()).toBe(true);
       expect(drmEngine.keySystem()).toBe('');
       expect(requestMediaKeySystemAccessSpy.calls.count()).toBe(0);
@@ -438,7 +469,8 @@ describe('DrmEngine', function() {
       };
 
       drmEngine.configure(config);
-      await drmEngine.init(manifest, /* offline */ false);
+      const variants = shaka.util.StreamUtils.getAllVariants(manifest);
+      await drmEngine.initForPlayback(variants, manifest.offlineSessionIds);
       expect(drmEngine.initialized()).toBe(true);
       expect(drmEngine.keySystem()).toBe('drm.abc');
       expect(requestMediaKeySystemAccessSpy.calls.count()).toBe(1);
@@ -461,13 +493,15 @@ describe('DrmEngine', function() {
         audioRobustness: 'good',
         videoRobustness: 'really_really_ridiculously_good',
         serverCertificate: null,
+        individualizationServer: '',
         distinctiveIdentifierRequired: true,
         persistentStateRequired: true,
       };
       drmEngine.configure(config);
 
       try {
-        await drmEngine.init(manifest, /* offline */ false);
+        const variants = shaka.util.StreamUtils.getAllVariants(manifest);
+        await drmEngine.initForPlayback(variants, manifest.offlineSessionIds);
         fail();
       } catch (error) {
         expect(drmEngine.initialized()).toBe(false);
@@ -513,13 +547,15 @@ describe('DrmEngine', function() {
         audioRobustness: 'bad',
         videoRobustness: 'so_bad_it_hurts',
         serverCertificate: null,
+        individualizationServer: '',
         distinctiveIdentifierRequired: false,
         persistentStateRequired: false,
       };
       drmEngine.configure(config);
 
       try {
-        await drmEngine.init(manifest, /* offline */ false);
+        const variants = shaka.util.StreamUtils.getAllVariants(manifest);
+        await drmEngine.initForPlayback(variants, manifest.offlineSessionIds);
         fail();
       } catch (error) {
         expect(drmEngine.initialized()).toBe(false);
@@ -546,7 +582,8 @@ describe('DrmEngine', function() {
       drmEngine.configure(config);
 
       try {
-        await drmEngine.init(manifest, /* offline */ false);
+        const variants = shaka.util.StreamUtils.getAllVariants(manifest);
+        await drmEngine.initForPlayback(variants, manifest.offlineSessionIds);
         fail();
       } catch (error) {
         shaka.test.Util.expectToEqualError(error, new shaka.util.Error(
@@ -867,43 +904,33 @@ describe('DrmEngine', function() {
       });
 
       it('triggers a license request', async () => {
-        await initAndAttach();
-        let initData = new Uint8Array(0);
-        mockVideo.on['encrypted'](
-            {initDataType: 'webm', initData: initData, keyId: null});
-
-        let operation = shaka.util.AbortableOperation.completed({});
-        fakeNetEngine.request.and.returnValue(operation);
-        let message = new Uint8Array(0);
-        session1.on['message']({target: session1, message: message});
-
-        expect(fakeNetEngine.request).toHaveBeenCalledWith(
-            shaka.net.NetworkingEngine.RequestType.LICENSE,
-            jasmine.objectContaining({
-              uris: ['http://abc.drm/license'],
-              method: 'POST',
-              body: message,
-            }));
+        await sendMessageTest('http://abc.drm/license');
       });
 
       it('prefers a license server URI from DrmInfo', async () => {
         manifest.periods[0].variants[0].drmInfos[0].licenseServerUri =
             'http://foo.bar/drm';
-
-        await initAndAttach();
-        let initData = new Uint8Array(0);
-        mockVideo.on['encrypted'](
-            {initDataType: 'webm', initData: initData, keyId: null});
-
-        let operation = shaka.util.AbortableOperation.completed({});
-        fakeNetEngine.request.and.returnValue(operation);
-        let message = new Uint8Array(0);
-        session1.on['message']({target: session1, message: message});
-
-        expect(fakeNetEngine.request).toHaveBeenCalledWith(
-            shaka.net.NetworkingEngine.RequestType.LICENSE,
-            jasmine.objectContaining({uris: ['http://foo.bar/drm']}));
+        await sendMessageTest('http://foo.bar/drm');
       });
+
+      it('handles "individualization-request" messages special', async () => {
+        config.advanced['drm.abc'] = createAdvancedConfig(null);
+        config.advanced['drm.abc'].individualizationServer =
+            'http://foo.bar/drm';
+        expect(config.servers['drm.abc']).not.toBe('http://foo.bar/drm');
+
+        await sendMessageTest(
+            'http://foo.bar/drm', 'individualization-request');
+      });
+
+      it('uses license server for "individualization-request" by default',
+         async () => {
+           config.advanced['drm.abc'] = createAdvancedConfig(null);
+           config.advanced['drm.abc'].individualizationServer = '';
+
+           await sendMessageTest(
+               'http://abc.drm/license', 'individualization-request');
+         });
 
       it('dispatches an error if license request fails', async () => {
         onErrorSpy.and.stub();
@@ -938,6 +965,34 @@ describe('DrmEngine', function() {
               data: ['http://abc.drm/license', 403],
             })));
       });
+
+      /**
+       * @param {string=} expectedUrl
+       * @param {string=} messageType
+       * @return {!Promise}
+       */
+      async function sendMessageTest(
+          expectedUrl, messageType = 'license-request') {
+        await initAndAttach();
+        let initData = new Uint8Array(0);
+        mockVideo.on['encrypted'](
+            {initDataType: 'webm', initData: initData, keyId: null});
+
+        let operation = shaka.util.AbortableOperation.completed({});
+        fakeNetEngine.request.and.returnValue(operation);
+        let message = new Uint8Array(0);
+        session1.on['message'](
+            {target: session1, message: message, messageType: messageType});
+
+        expect(fakeNetEngine.request).toHaveBeenCalledWith(
+            shaka.net.NetworkingEngine.RequestType.LICENSE,
+            jasmine.objectContaining({
+              uris: [expectedUrl],
+              method: 'POST',
+              body: message,
+              licenseRequestType: messageType,
+            }));
+      }
     });  // describe('message')
 
     describe('keystatuseschange', function() {
@@ -1313,73 +1368,72 @@ describe('DrmEngine', function() {
       await drmEngine.destroy();
     });
 
-    it('interrupts failing MediaKeys queries', function(done) {
+    it('interrupts failing MediaKeys queries', async function() {
       // Hold the MediaKeys query:
-      let p = new shaka.util.PublicPromise();
+      /** @type {!shaka.util.PublicPromise} */
+      const p = new shaka.util.PublicPromise();
       requestMediaKeySystemAccessSpy.and.returnValue(p);
 
-      // This chain should still return "success" when DrmEngine is destroyed.
-      drmEngine.init(manifest, /* offline */ false).catch(fail);
+      const variants = shaka.util.StreamUtils.getAllVariants(manifest);
+      drmEngine.initForPlayback(
+          variants, manifest.offlineSessionIds).catch(fail);
 
-      shaka.test.Util.delay(1.0).then(function() {
-        // The first query has been made, which we are blocking.
-        expect(requestMediaKeySystemAccessSpy.calls.count()).toBe(1);
-        expect(requestMediaKeySystemAccessSpy).toHaveBeenCalledWith(
-            'drm.abc', jasmine.any(Array));
-        return drmEngine.destroy();
-      }).then(function() {
-        p.reject();  // Fail drm.abc.
-        return shaka.test.Util.delay(1.5);
-      }).then(function() {
-        // A second query was not made.
-        expect(requestMediaKeySystemAccessSpy.calls.count()).toBe(1);
-        expect(drmEngine.initialized()).toBe(false);
-      }).catch(fail).then(done);
+      // This flow should still return "success" when DrmEngine is destroyed.
+      await shaka.test.Util.delay(1.0);
+      // The first query has been made, which we are blocking.
+      expect(requestMediaKeySystemAccessSpy.calls.count()).toBe(1);
+      expect(requestMediaKeySystemAccessSpy).toHaveBeenCalledWith(
+          'drm.abc', jasmine.any(Array));
+      await drmEngine.destroy();
+      p.reject();  // Fail drm.abc.
+      await shaka.test.Util.delay(1.5);
+      // A second query was not made.
+      expect(requestMediaKeySystemAccessSpy.calls.count()).toBe(1);
+      expect(drmEngine.initialized()).toBe(false);
     });
 
-    it('interrupts successful MediaKeys queries', function(done) {
+    it('interrupts successful MediaKeys queries', async function() {
       // Hold the MediaKeys query:
-      let p = new shaka.util.PublicPromise();
+      /** @type {!shaka.util.PublicPromise} */
+      const p = new shaka.util.PublicPromise();
       requestMediaKeySystemAccessSpy.and.returnValue(p);
 
-      // This chain should still return "success" when DrmEngine is destroyed.
-      drmEngine.init(manifest, /* offline */ false).catch(fail);
+      // This flow should still return "success" when DrmEngine is destroyed.
+      const variants = shaka.util.StreamUtils.getAllVariants(manifest);
+      drmEngine.initForPlayback(
+          variants, manifest.offlineSessionIds).catch(fail);
 
-      shaka.test.Util.delay(1.0).then(function() {
-        // The first query has been made, which we are blocking.
-        expect(requestMediaKeySystemAccessSpy.calls.count()).toBe(1);
-        expect(requestMediaKeySystemAccessSpy).toHaveBeenCalledWith(
-            'drm.abc', jasmine.any(Array));
-        return drmEngine.destroy();
-      }).then(function() {
-        p.resolve();  // Success for drm.abc.
-        return shaka.test.Util.delay(1.5);
-      }).then(function() {
-        // Due to the interruption, we never created MediaKeys.
-        expect(drmEngine.keySystem()).toBe('');
-        expect(drmEngine.initialized()).toBe(false);
-      }).catch(fail).then(done);
+      await shaka.test.Util.delay(1.0);
+      // The first query has been made, which we are blocking.
+      expect(requestMediaKeySystemAccessSpy.calls.count()).toBe(1);
+      expect(requestMediaKeySystemAccessSpy).toHaveBeenCalledWith(
+          'drm.abc', jasmine.any(Array));
+      await drmEngine.destroy();
+      p.resolve();  // Success for drm.abc.
+      await shaka.test.Util.delay(1.5);
+      // Due to the interruption, we never created MediaKeys.
+      expect(drmEngine.keySystem()).toBe('');
+      expect(drmEngine.initialized()).toBe(false);
     });
 
-    it('interrupts successful calls to createMediaKeys', function(done) {
+    it('interrupts successful calls to createMediaKeys', async function() {
       // Hold createMediaKeys:
-      let p = new shaka.util.PublicPromise();
+      /** @type {!shaka.util.PublicPromise} */
+      const p = new shaka.util.PublicPromise();
       mockMediaKeySystemAccess.createMediaKeys.and.returnValue(p);
 
-      // This chain should still return "success" when DrmEngine is destroyed.
-      drmEngine.init(manifest, /* offline */ false).catch(fail);
+      // This flow should still return "success" when DrmEngine is destroyed.
+      const variants = shaka.util.StreamUtils.getAllVariants(manifest);
+      drmEngine.initForPlayback(variants, manifest.offlineSessionIds);
 
-      shaka.test.Util.delay(1.0).then(function() {
-        // We are blocked on createMediaKeys:
-        expect(mockMediaKeySystemAccess.createMediaKeys).toHaveBeenCalled();
-        return drmEngine.destroy();
-      }).then(function() {
-        p.resolve();  // Success for createMediaKeys().
-        return shaka.test.Util.delay(1.5);
-      }).then(function() {
-        // Due to the interruption, we never finished initialization.
-        expect(drmEngine.initialized()).toBe(false);
-      }).catch(fail).then(done);
+      await shaka.test.Util.delay(1.0);
+      // We are blocked on createMediaKeys:
+      expect(mockMediaKeySystemAccess.createMediaKeys).toHaveBeenCalled();
+      await drmEngine.destroy();
+      p.resolve();  // Success for createMediaKeys().
+      await shaka.test.Util.delay(1.5);
+      // Due to the interruption, we never finished initialization.
+      expect(drmEngine.initialized()).toBe(false);
     });
 
     it('interrupts failed calls to setMediaKeys', function(done) {
@@ -1636,11 +1690,13 @@ describe('DrmEngine', function() {
         videoRobustness: 'really_really_ridiculously_good',
         distinctiveIdentifierRequired: true,
         serverCertificate: null,
+        individualizationServer: '',
         persistentStateRequired: true,
       };
       drmEngine.configure(config);
 
-      await drmEngine.init(manifest, /* offline */ false);
+      const variants = shaka.util.StreamUtils.getAllVariants(manifest);
+      await drmEngine.initForPlayback(variants, manifest.offlineSessionIds);
       expect(drmEngine.initialized()).toBe(true);
       let drmInfo = drmEngine.getDrmInfo();
       expect(drmInfo).toEqual({
@@ -1788,45 +1844,34 @@ describe('DrmEngine', function() {
     });
   }); // describe('configure')
 
-  describe('removeSessions', function() {
+  describe('removeSession', function() {
     /** @type {!shaka.util.PublicPromise} */
-    let updatePromise1;
-    /** @type {!shaka.util.PublicPromise} */
-    let updatePromise2;
+    let updatePromise;
 
     beforeEach(async () => {
       session1.load.and.returnValue(Promise.resolve(true));
-      session2.load.and.returnValue(Promise.resolve(true));
 
       // When remove() is called, it should resolve quickly and raise a
       // 'message' event of type 'license-release'.  The removeSessions method
       // should wait until update() is complete with the response.
-      updatePromise1 = new shaka.util.PublicPromise();
-      updatePromise2 = new shaka.util.PublicPromise();
+      updatePromise = new shaka.util.PublicPromise();
       session1.remove.and.callFake(function() {
         // Raise the event synchronously, even though it doesn't normally.
         session1.on['message']({target: session1, message: new ArrayBuffer(0)});
-        session1.update.and.returnValue(updatePromise1);
-        return Promise.resolve();
-      });
-      session2.remove.and.callFake(function() {
-        session2.on['message']({target: session2, message: new ArrayBuffer(0)});
-        session2.update.and.returnValue(updatePromise2);
+        session1.update.and.returnValue(updatePromise);
         return Promise.resolve();
       });
 
-      await drmEngine.init(manifest, /* offline */ true);
+      const variants = shaka.util.StreamUtils.getAllVariants(manifest);
+      await drmEngine.initForPlayback(variants, manifest.offlineSessionIds);
     });
 
     it('waits until update() is complete', async () => {
-      shaka.test.Util.delay(0.1).then(
-          updatePromise1.resolve.bind(updatePromise1));
       shaka.test.Util.delay(0.3).then(
-          updatePromise2.resolve.bind(updatePromise2));
+          updatePromise.resolve.bind(updatePromise));
 
-      await drmEngine.removeSessions(['abc', 'def']);
+      await drmEngine.removeSession('abc');
       expect(session1.update).toHaveBeenCalled();
-      expect(session2.update).toHaveBeenCalled();
     });
 
     it('is rejected when network request fails', async () => {
@@ -1839,7 +1884,7 @@ describe('DrmEngine', function() {
       onErrorSpy.and.stub();
 
       try {
-        await drmEngine.removeSessions(['abc', 'def']);
+        await drmEngine.removeSession('abc');
         fail();
       } catch (error) {
         shaka.test.Util.expectToEqualError(
@@ -1849,17 +1894,16 @@ describe('DrmEngine', function() {
                 shaka.util.Error.Category.DRM,
                 shaka.util.Error.Code.LICENSE_REQUEST_FAILED,
                 networkError));
-        // The first session's request was rejected.
         expect(session1.update).not.toHaveBeenCalled();
       }
     });
 
     it('is rejected when update() is rejected', async () => {
-      updatePromise1.reject({message: 'Error'});
+      updatePromise.reject({message: 'Error'});
       onErrorSpy.and.stub();
 
       try {
-        await drmEngine.removeSessions(['abc', 'def']);
+        await drmEngine.removeSession('abc');
         fail();
       } catch (error) {
         shaka.test.Util.expectToEqualError(
@@ -1927,14 +1971,14 @@ describe('DrmEngine', function() {
     });
   });
 
-  function initAndAttach() {
-    return drmEngine.init(manifest, /* offline */ false).then(function() {
-      return drmEngine.attach(mockVideo);
-    });
+  async function initAndAttach() {
+    const variants = shaka.util.StreamUtils.getAllVariants(manifest);
+    await drmEngine.initForPlayback(variants, manifest.offlineSessionIds);
+    await drmEngine.attach(mockVideo);
   }
 
   function fakeRequestMediaKeySystemAccess(acceptableKeySystems, keySystem) {
-    if (acceptableKeySystems.indexOf(keySystem) < 0) {
+    if (!acceptableKeySystems.includes(keySystem)) {
       return Promise.reject();
     }
     mockMediaKeySystemAccess.keySystem = keySystem;
@@ -2002,6 +2046,7 @@ describe('DrmEngine', function() {
       distinctiveIdentifierRequired: false,
       persistentStateRequired: false,
       serverCertificate: serverCert,
+      individualizationServer: '',
       videoRobustness: '',
     };
   }

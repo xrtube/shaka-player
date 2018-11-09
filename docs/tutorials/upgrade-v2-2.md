@@ -24,16 +24,6 @@ Shaka v2.4 introduces several improvements over v2.2, including:
   - Live stream playback can begin at a negative offset from the live edge
 
 
-#### Promise polyfill for IE
-
-Prior to v2.4, we had our own polyfill of `Promise` for IE 11 support.  In v2.4,
-we have dropped that polyfill.  To support IE 11 in your application, you MUST
-install a `Promise` polyfill separately.  We recommend [es6-promise-polyfill][]
-for that purpose.
-
-[es6-promise-polyfill]: https://github.com/lahmatiy/es6-promise-polyfill
-
-
 #### HLS start time configuration
 
 For VOD HLS content which does not start at t=0, v2.2 had a configuration called
@@ -187,7 +177,7 @@ function retryOnSpecificHttpErrorsCallback(error) {
   if (error.code == shaka.util.Error.Code.BAD_HTTP_STATUS) {
     var statusCode = error.data[1];
     var retryCodes = [ 502, 503, 504, 520 ];
-    if (retryCodes.indexOf(statusCode) >= 0) {
+    if (retryCodes.includes(statusCode)) {
       player.retryStreaming();
     }
   }

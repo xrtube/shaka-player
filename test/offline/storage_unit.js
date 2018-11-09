@@ -35,6 +35,16 @@ describe('Storage', function() {
 
   const kbps = 1000;
 
+  beforeEach(async () => {
+    // Make sure we start with a clean slate between each run.
+    await eraseStorage();
+  });
+
+  afterEach(async () => {
+    // Make sure we don't leave anything behind.
+    await eraseStorage();
+  });
+
   describe('storage delete all', function() {
     /** @type {!shaka.Player} */
     let player;
@@ -141,24 +151,18 @@ describe('Storage', function() {
     /** @type {!shaka.offline.Storage} */
     let storage;
 
-    beforeEach(drmCheckAndRun(async function() {
-      // Make sure we start with a clean slate between each run.
-      await eraseStorage();
-
+    beforeEach(function() {
       // Use a real Player since Storage only uses the configuration and
       // networking engine.  This allows us to use Player.configure in these
       // tests.
       player = new shaka.Player(new shaka.test.FakeVideo());
       storage = new shaka.offline.Storage(player);
-    }));
+    });
 
-    afterEach(drmCheckAndRun(async function() {
+    afterEach(async function() {
       await storage.destroy();
       await player.destroy();
-
-      // Make sure we don't leave anything behind.
-      await eraseStorage();
-    }));
+    });
 
     drmIt('removes persistent license', drmCheckAndRun(async function() {
       const TestManifestParser = shaka.test.TestScheme.ManifestParser;
@@ -194,6 +198,83 @@ describe('Storage', function() {
         await withDrm(player, manifest, (drm) => {
           return Promise.all(manifest.offlineSessionIds.map(async (session) => {
             let notFoundSession = await loadOfflineSession(drm, session);
+            expect(notFoundSession).toBeFalsy();
+          }));
+        });
+
+        return Promise.reject('Expected drm to throw OFFLINE_SESSION_REMOVED');
+      } catch (e) {
+        expect(e).toBeTruthy();
+        expect(e.code).toBe(shaka.util.Error.Code.OFFLINE_SESSION_REMOVED);
+      }
+    }));
+
+    // TODO: This test doesn't work on Chrome since it will hang closing the
+    // offline session if there is a pending release message.  We work around
+    // this with a timeout, but that means we'll get an error later trying to
+    // open the session multiple times.  See https://crbug.com/690583.
+    xit('defers removing licenses on error', drmCheckAndRun(async function() {
+      const TestManifestParser = shaka.test.TestScheme.ManifestParser;
+      const getEmeSessions = async () => {
+        /** @type {!shaka.offline.StorageMuxer} */
+        const muxer = new shaka.offline.StorageMuxer();
+        await muxer.init();
+
+        /** @type {!Array.<!Promise>} */
+        const promises = [];
+        muxer.forEachEmeSessionCell((cell) => promises.push(cell.getAll()));
+        const cellByMechanism = await Promise.all(promises);
+        await muxer.destroy();
+        return cellByMechanism.reduce(shaka.util.Functional.collapseArrays, []);
+      };
+
+      const oldSessions = await getEmeSessions();
+      expect(oldSessions).toEqual([]);
+
+      // PART 1 - Download and store content that has a persistent license
+      //          associated with it.
+      const stored = await storage.store(
+          'test:sintel-enc', noMetadata, TestManifestParser);
+      expect(stored.offlineUri).toBeTruthy();
+
+      /** @type {shaka.offline.OfflineUri} */
+      const uri = shaka.offline.OfflineUri.parse(stored.offlineUri);
+      goog.asserts.assert(uri, 'Stored offline uri should be non-null');
+      const manifest = await getStoredManifest(uri);
+
+      // PART 2 - Add an error so the release license message fails.
+      storage.getNetworkingEngine().registerRequestFilter((type, request) => {
+        if (type == shaka.net.NetworkingEngine.RequestType.LICENSE) {
+          throw new Error('Error should be ignored');
+        }
+      });
+
+      // PART 3 - Remove the manifest from storage. This should ignore the
+      // error with the EME session.  It should also store the session for later
+      // removal.
+      await storage.remove(uri.toString());
+
+      // PART 4 - Verify the media was deleted but the session still exists.
+      const storedContents = await storage.list();
+      expect(storedContents).toEqual([]);
+      // TODO: Chrome doesn't allow loading the session a second time, so we
+      // can't check EME for the session.  Instead check the database.
+      // https://crbug.com/883895
+      const sessions = await getEmeSessions();
+      expect(sessions.length).toBeGreaterThan(0);
+
+      // PART 5 - Disable the error and remove the EME session.
+      storage.getNetworkingEngine().clearAllRequestFilters();
+      const didRemoveAll = await storage.removeEmeSessions();
+      expect(didRemoveAll).toBe(true);
+
+      // PART 6 - Check that the licenses were removed.
+      const endSessions = await getEmeSessions();
+      expect(endSessions).toEqual([]);
+      try {
+        await withDrm(player, manifest, (drm) => {
+          return Promise.all(manifest.offlineSessionIds.map(async (session) => {
+            const notFoundSession = await loadOfflineSession(drm, session);
             expect(notFoundSession).toBeFalsy();
           }));
         });
@@ -326,7 +407,7 @@ describe('Storage', function() {
     let storage;
 
     beforeEach(function() {
-      shaka.offline.StorageMuxer.overrideSupport({});
+      shaka.offline.StorageMuxer.overrideSupport(new Map());
 
       player = new shaka.Player(new shaka.test.FakeVideo());
       storage = new shaka.offline.Storage(player);
@@ -395,10 +476,7 @@ describe('Storage', function() {
     /** @type {!shaka.offline.Storage} */
     let storage;
 
-    beforeEach(checkAndRun(async function() {
-      // Make sure we start with a clean slate between each run.
-      await eraseStorage();
-
+    beforeEach(function() {
       // Use these promises to ensure that the data from networking
       // engine arrives in the correct order.
       const delays = {};
@@ -453,15 +531,12 @@ describe('Storage', function() {
           trackSelectionCallback: (tracks) => { return tracks; },
         },
       });
-    }));
+    });
 
-    afterEach(checkAndRun(async function() {
+    afterEach(async function() {
       await storage.destroy();
       await player.destroy();
-
-      // Make sure we don't leave anything behind.
-      await eraseStorage();
-    }));
+    });
 
     it('uses stream bandwidth', checkAndRun(async function() {
       /**
@@ -519,8 +594,7 @@ describe('Storage', function() {
        *
        * @type {!Array.<number>}
        */
-      const remainingProgress =
-          shaka.util.ArrayUtils.copy(expectedProgressSteps);
+      const remainingProgress = expectedProgressSteps.slice();
 
       const progressCallback = (content, progress) => {
         expect(progress).toBeCloseTo(remainingProgress.shift());
@@ -634,10 +708,7 @@ describe('Storage', function() {
     /** @type {!shaka.offline.Storage} */
     let storage;
 
-    beforeEach(checkAndRun(async function() {
-      // Make sure we start with a clean slate between each run.
-      await eraseStorage();
-
+    beforeEach(function() {
       netEngine = makeNetworkEngine();
 
       // Use a real Player since Storage only uses the configuration and
@@ -648,15 +719,12 @@ describe('Storage', function() {
       });
 
       storage = new shaka.offline.Storage(player);
-    }));
+    });
 
-    afterEach(checkAndRun(async function() {
+    afterEach(async function() {
       await storage.destroy();
       await player.destroy();
-
-      // Make sure we don't leave anything behind.
-      await eraseStorage();
-    }));
+    });
 
     it('stores and lists content', checkAndRun(async function() {
       // Just use any three manifests as we don't care about the manifests
@@ -900,17 +968,31 @@ describe('Storage', function() {
         }));
 
     it('throws an error if destroyed mid-store', checkAndRun(async function() {
-      // Block the network so that we won't finish the store command.
-      netEngine.delayNextRequest();
-      let storePromise = storage.store(
-          manifestWithPerStreamBandwidthUri, noMetadata, FakeManifestParser);
+      const manifest = makeManifestWithPerStreamBandwidth();
 
-      // Destroy storage. This should cause the store command to reject the
-      // promise.
-      await storage.destroy();
+      /**
+       * Block storage when it goes to parse the manifest. Since we don't want
+       * to change the flow, return a valid manifest once it resolves.
+       * @type {shaka.util.PublicPromise}
+       */
+      const stallStorage = new shaka.util.PublicPromise();
+      storage.parseManifest = async () => {
+        await stallStorage;
+        return manifest;
+      };
 
+      // The uri won't matter as we have override |parseManifest|.
+      const waitOnStore = storage.store('uri-does-not-matter');
+
+      // Request for storage to be destroyed. Before waiting for it to resolve,
+      // resolve the promise that we are using to stall the store operation.
+      const waitOnDestroy = storage.destroy();
+      stallStorage.resolve();
+      await waitOnDestroy;
+
+      // The store request should not resolve, but instead be rejected.
       try {
-        await storePromise;
+        await waitOnStore;
         fail();
       } catch (e) {
         expect(e.code).toBe(shaka.util.Error.Code.OPERATION_ABORTED);
@@ -1289,18 +1371,8 @@ describe('Storage', function() {
    * @param {shaka.extern.Manifest} manifest
    */
   function overrideDrmAndManifest(storage, drm, manifest) {
-    /**
-     * @type {{
-     *  drmEngine: !shaka.media.DrmEngine,
-     *  manifest: shaka.extern.Manifest
-     *  }}
-     */
-    let ret = {
-      drmEngine: drm,
-      manifest: manifest,
-    };
-
-    storage.loadInternal = () => Promise.resolve(ret);
+    storage.parseManifest = () => Promise.resolve(manifest);
+    storage.createDrmEngine = () => Promise.resolve(drm);
   }
 
   /**
@@ -1399,8 +1471,6 @@ describe('Storage', function() {
    * @return {!Promise}
    */
   function withDrm(player, manifest, action) {
-    const offlineLicense = true;
-
     let net = player.getNetworkingEngine();
     goog.asserts.assert(net, 'Player should have a net engine right now');
 
@@ -1416,8 +1486,8 @@ describe('Storage', function() {
 
     return shaka.util.Destroyer.with([drm], async () => {
       drm.configure(player.getConfiguration().drm);
-      await drm.init(manifest, offlineLicense);
-
+      const variants = shaka.util.StreamUtils.getAllVariants(manifest);
+      await drm.initForStorage(variants, /* usePersistentLicenses */ true);
       return action(drm);
     }).then((result) => {
       if (error) {

@@ -208,6 +208,34 @@ shaka.extern.SegmentDataDB;
 
 
 /**
+ * @typedef {{
+ *   sessionId: string,
+ *   keySystem: string,
+ *   licenseUri: string,
+ *   serverCertificate: Uint8Array,
+ *   audioCapabilities: !Array.<MediaKeySystemMediaCapability>,
+ *   videoCapabilities: !Array.<MediaKeySystemMediaCapability>
+ * }}
+ *
+ * @property {string} sessionId
+ *   The EME session ID.
+ * @property {string} keySystem
+ *   The EME key system string the session belongs to.
+ * @property {string} licenseUri
+ *   The URI for the license server.
+ * @property {Uint8Array} serverCertificate
+ *   A key-system-specific server certificate used to encrypt license requests.
+ *   Its use is optional and is meant as an optimization to avoid a round-trip
+ *   to request a certificate.
+ * @property {!Array.<MediaKeySystemMediacapability>} audioCapabilities
+ *   The EME audio capabilities used to create the session.
+ * @property {!Array.<MediaKeySystemMediacapability>} videoCapabilities
+ *   The EME video capabilities used to create the session.
+ */
+shaka.extern.EmeSessionDB;
+
+
+/**
  * An interface that defines access to collection of segments and manifests. All
  * methods are designed to be batched operations allowing the implementations to
  * optimize their operations based on how they store data.
@@ -328,9 +356,49 @@ shaka.extern.StorageCell.prototype.getManifests = function(keys) {};
  * the asset they describe, it is assumed that it is feasible to have them all
  * in main memory at one time.
  *
- * @return {!Promise<!Object.<number, shaka.extern.ManifestDB>>}
+ * @return {!Promise<!Map.<number, shaka.extern.ManifestDB>>}
  */
 shaka.extern.StorageCell.prototype.getAllManifests = function() {};
+
+
+/**
+ * Similar to storage cells (shaka.extern.StorageCell), an EmeSessionStorageCell
+ * stores data persistently.  This only stores the license's session info, not
+ * the license itself.  The license itself is stored using EME.
+ *
+ * @interface
+ */
+shaka.extern.EmeSessionStorageCell = function() {};
+
+
+/**
+ * Free all resources used by this cell. This won't affect the stored content.
+ * @return {!Promise}
+ */
+shaka.extern.EmeSessionStorageCell.prototype.destroy = function() {};
+
+
+/**
+ * Gets the currently stored sessions.
+ * @return {!Promise.<!Array.<shaka.extern.EmeSessionDB>>}
+ */
+shaka.extern.EmeSessionStorageCell.prototype.getAll = function() {};
+
+
+/**
+ * Adds the given sessions to the store.
+ * @param {!Array.<shaka.extern.EmeSessionDB>} sessions
+ * @return {!Promise}
+ */
+shaka.extern.EmeSessionStorageCell.prototype.add = function(sessions) {};
+
+
+/**
+ * Removes the given session IDs from the store.
+ * @param {!Array.<string>} sessionIds
+ * @return {!Promise}
+ */
+shaka.extern.EmeSessionStorageCell.prototype.remove = function(sessionIds) {};
 
 
 /**
@@ -372,9 +440,16 @@ shaka.extern.StorageMechanism.prototype.destroy = function() {};
  * address in the mechanism and should be consistent between calls to
  * |getCells|.
  *
- * @return {!Object.<string, !shaka.extern.StorageCell>}
+ * @return {!Map.<string, !shaka.extern.StorageCell>}
  */
 shaka.extern.StorageMechanism.prototype.getCells = function() {};
+
+
+/**
+ * Get the current EME session storage cell.
+ * @return {!shaka.extern.EmeSessionStorageCell}
+ */
+shaka.extern.StorageMechanism.prototype.getEmeSessionCell = function() {};
 
 
 /**

@@ -53,17 +53,16 @@ describe('CastUtils', function() {
     let playerMembers = Object.keys(shaka.Player.prototype).filter(
         function(name) {
           // Private members end with _.
-          return ignoredMembers.indexOf(name) < 0 &&
-              name.substr(name.length - 1) != '_';
+          return !ignoredMembers.includes(name) && !name.endsWith('_');
         });
 
     // To make debugging easier, don't check that they are equal; instead check
     // that neither has any extra entries.
     let extraCastMembers = castMembers.filter(function(name) {
-      return playerMembers.indexOf(name) < 0;
+      return !playerMembers.includes(name);
     });
     let extraPlayerMembers = playerMembers.filter(function(name) {
-      return castMembers.indexOf(name) < 0;
+      return !castMembers.includes(name);
     });
     expect(extraCastMembers).toEqual([]);
     expect(extraPlayerMembers).toEqual([]);
@@ -194,6 +193,7 @@ describe('CastUtils', function() {
       beforeAll(function() {
         video =
             /** @type {!HTMLVideoElement} */ (document.createElement('video'));
+        video.muted = true;
         document.body.appendChild(video);
       });
 
@@ -217,22 +217,20 @@ describe('CastUtils', function() {
 
         mediaSourceEngine = new shaka.media.MediaSourceEngine(video);
 
-        // Create empty object first and initialize the fields through
-        // [] to allow field names to be expressions.
-        let initObject = {};
         const ContentType = shaka.util.ManifestParserUtils.ContentType;
-        initObject[ContentType.VIDEO] = fakeVideoStream;
+        const initObject = new Map();
+        initObject.set(ContentType.VIDEO, fakeVideoStream);
 
         mediaSourceEngine.init(initObject, false).then(function() {
           return shaka.test.Util.fetch(initSegmentUrl);
         }).then(function(data) {
           return mediaSourceEngine.appendBuffer(ContentType.VIDEO, data,
-                                                null, null);
+              null, null, /* hasClosedCaptions */ false);
         }).then(function() {
           return shaka.test.Util.fetch(videoSegmentUrl);
         }).then(function(data) {
           return mediaSourceEngine.appendBuffer(ContentType.VIDEO, data,
-                                                null, null);
+              null, null, /* hasClosedCaptions */ false);
         }).catch(fail).then(done);
       });
 

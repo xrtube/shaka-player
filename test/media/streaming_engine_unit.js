@@ -575,12 +575,10 @@ describe('StreamingEngine', function() {
     });
 
     onInitialStreamsSetup.and.callFake(function() {
-      // Create empty object first and initialize the fields through
-      // [] to allow field names to be expressions.
-      let expectedObject = {};
-      expectedObject[ContentType.AUDIO] = audioStream1;
-      expectedObject[ContentType.VIDEO] = videoStream1;
-      expectedObject[ContentType.TEXT] = textStream1;
+      const expectedObject = new Map();
+      expectedObject.set(ContentType.AUDIO, audioStream1);
+      expectedObject.set(ContentType.VIDEO, videoStream1);
+      expectedObject.set(ContentType.TEXT, textStream1);
       expect(mediaSourceEngine.init)
           .toHaveBeenCalledWith(expectedObject, false);
       expect(mediaSourceEngine.init.calls.count()).toBe(1);
@@ -633,11 +631,34 @@ describe('StreamingEngine', function() {
         if (playheadTime == 20) {
           mediaSourceEngine.clear.calls.reset();
           mediaSourceEngine.init.calls.reset();
-          streamingEngine.loadNewTextStream(textStream1,
-                                            /* createMediaState */ true);
+          streamingEngine.loadNewTextStream(textStream2);
           expect(mediaSourceEngine.clear).toHaveBeenCalledWith('text');
+
+          const expectedObject = new Map();
+          expectedObject.set(ContentType.TEXT, jasmine.any(Object));
           expect(mediaSourceEngine.init).toHaveBeenCalledWith(
-              {text: jasmine.any(Object)}, false);
+              expectedObject, false);
+        }
+      });
+    });
+
+    it('only clears MediaSourceEngine when it loads a different text stream',
+        function() {
+      setupVod();
+      mediaSourceEngine = new shaka.test.FakeMediaSourceEngine(segmentData);
+      createStreamingEngine();
+      playhead.getTime.and.returnValue(0);
+      onStartupComplete.and.callFake(function() { setupFakeGetTime(0); });
+      onChooseStreams.and.callFake(onChooseStreamsWithUnloadedText);
+
+      streamingEngine.init();
+
+      runTest(function() {
+        if (playheadTime == 20) {
+          mediaSourceEngine.clear.calls.reset();
+          mediaSourceEngine.init.calls.reset();
+          streamingEngine.loadNewTextStream(textStream1);
+          expect(mediaSourceEngine.clear).not.toHaveBeenCalledWith('text');
         }
       });
     });
@@ -1104,11 +1125,11 @@ describe('StreamingEngine', function() {
             .addAudio(10).useSegmentTemplate('audio-10-%d.mp4', 10)
             .addVideo(11).useSegmentTemplate('video-11-%d.mp4', 10)
           .addVariant(1)
-            .addAudio(10)  // reused
+            .addExistingStream(10)  // audio
             .addVideo(12).useSegmentTemplate('video-12-%d.mp4', 10)
           .addVariant(2)
             .addAudio(13).useSegmentTemplate('audio-13-%d.mp4', 10)
-            .addVideo(12)  // reused
+            .addExistingStream(12)  // video
           .addTextStream(20).useSegmentTemplate('text-20-%d.mp4', 10)
         .build();
 
@@ -2824,9 +2845,9 @@ describe('StreamingEngine', function() {
       onChooseStreams.and.callFake(defaultOnChooseStreams.bind(null));
     });
 
-    it('raises an event for embedded emsg boxes', function() {
-      videoStream1.containsEmsgBoxes = true;
+    it('raises an event for registered embedded emsg boxes', function() {
       segmentData[ContentType.VIDEO].segments[0] = emsgSegment.buffer;
+      videoStream1.emsgSchemeIdUris = [emsgObj.schemeIdUri];
 
       // Here we go!
       streamingEngine.init();
@@ -2839,13 +2860,12 @@ describe('StreamingEngine', function() {
     });
 
     it('raises multiple events', function() {
-      videoStream1.containsEmsgBoxes = true;
-
       const dummyBox =
           shaka.util.Uint8ArrayUtils.fromHex('0000000c6672656501020304');
       segmentData[ContentType.VIDEO].segments[0] =
           shaka.util.Uint8ArrayUtils.concat(emsgSegment, dummyBox, emsgSegment)
               .buffer;
+      videoStream1.emsgSchemeIdUris = [emsgObj.schemeIdUri];
 
       // Here we go!
       streamingEngine.init();
@@ -2855,7 +2875,6 @@ describe('StreamingEngine', function() {
     });
 
     it('won\'t raise an event without stream field set', function() {
-      videoStream1.containsEmsgBoxes = false;
       segmentData[ContentType.VIDEO].segments[0] = emsgSegment.buffer;
 
       // Here we go!
@@ -2866,7 +2885,17 @@ describe('StreamingEngine', function() {
     });
 
     it('won\'t raise an event when no emsg boxes present', function() {
-      videoStream1.containsEmsgBoxes = true;
+      videoStream1.emsgSchemeIdUris = [emsgObj.schemeIdUri];
+
+      // Here we go!
+      streamingEngine.init();
+      runTest();
+
+      expect(onEvent).not.toHaveBeenCalled();
+    });
+
+    it('won\'t raise an event for an unregistered emsg box', function() {
+      segmentData[ContentType.VIDEO].segments[0] = emsgSegment.buffer;
 
       // Here we go!
       streamingEngine.init();
@@ -2876,15 +2905,17 @@ describe('StreamingEngine', function() {
     });
 
     it('triggers manifest updates', function() {
-      videoStream1.containsEmsgBoxes = true;
       // This is an 'emsg' box that contains a scheme of
       // urn:mpeg:dash:event:2012 to indicate a manifest update.
       segmentData[ContentType.VIDEO].segments[0] =
-          Uint8ArrayUtils.fromHex(
-              '0000003a656d73670000000075726e3a' +
-              '6d7065673a646173683a6576656e743a' +
-              '32303132000000000031000000080000' +
-              '00ff0000000c74657374').buffer;
+          Uint8ArrayUtils
+              .fromHex(
+                  '0000003a656d73670000000075726e3a' +
+                  '6d7065673a646173683a6576656e743a' +
+                  '32303132000000000031000000080000' +
+                  '00ff0000000c74657374')
+              .buffer;
+      videoStream1.emsgSchemeIdUris = ['urn:mpeg:dash:event:2012'];
 
       // Here we go!
       streamingEngine.init();
@@ -3013,4 +3044,3 @@ describe('StreamingEngine', function() {
         });
   }
 });
-

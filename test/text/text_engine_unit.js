@@ -65,6 +65,20 @@ describe('TextEngine', function() {
       TextEngine.unregisterParser(dummyMimeType);
       expect(TextEngine.isTypeSupported(dummyMimeType)).toBe(false);
     });
+
+    it('reports support when it\'s closed captions and muxjs is available',
+          function() {
+        const closedCaptionsType =
+           shaka.util.MimeUtils.CLOSED_CAPTION_MIMETYPE;
+        const originalMuxjs = window.muxjs;
+        expect(TextEngine.isTypeSupported(closedCaptionsType)).toBe(true);
+        try {
+          window['muxjs'] = null;
+          expect(TextEngine.isTypeSupported(closedCaptionsType)).toBe(false);
+        } finally {
+          window['muxjs'] = originalMuxjs;
+        }
+    });
   });
 
   describe('appendBuffer', function() {
@@ -166,7 +180,7 @@ describe('TextEngine', function() {
 
         mockDisplayer.append.calls.reset();
         textEngine.setTimestampOffset(4);
-        return textEngine.appendBuffer(dummyData, 0, 3);
+        return textEngine.appendBuffer(dummyData, 4, 7);
       }).then(function() {
         expect(mockParseMedia).toHaveBeenCalledWith(
             new Uint8Array(dummyData),
@@ -240,15 +254,18 @@ describe('TextEngine', function() {
       }).catch(fail).then(done);
     });
 
-    it('handles timestamp offset', async function() {
+    it('does not use timestamp offset', async function() {
+      // The start and end times passed to appendBuffer are now absolute, so
+      // they already account for timestampOffset and period offset.
+      // See https://github.com/google/shaka-player/issues/1562
       textEngine.setTimestampOffset(60);
       await textEngine.appendBuffer(dummyData, 0, 3);
-      expect(textEngine.bufferStart()).toBe(60);
-      expect(textEngine.bufferEnd()).toBe(63);
+      expect(textEngine.bufferStart()).toBe(0);
+      expect(textEngine.bufferEnd()).toBe(3);
 
       await textEngine.appendBuffer(dummyData, 3, 6);
-      expect(textEngine.bufferStart()).toBe(60);
-      expect(textEngine.bufferEnd()).toBe(66);
+      expect(textEngine.bufferStart()).toBe(0);
+      expect(textEngine.bufferEnd()).toBe(6);
     });
   });
 
@@ -283,10 +300,14 @@ describe('TextEngine', function() {
       }).catch(fail).then(done);
     });
 
-    it('handles timestamp offset', async function() {
+    it('does not use timestamp offset', async function() {
+      // The start and end times passed to appendBuffer are now absolute, so
+      // they already account for timestampOffset and period offset.
+      // See https://github.com/google/shaka-player/issues/1562
       textEngine.setTimestampOffset(60);
       await textEngine.appendBuffer(dummyData, 3, 6);
-      expect(textEngine.bufferedAheadOf(64)).toBe(2);
+      expect(textEngine.bufferedAheadOf(4)).toBe(2);
+      expect(textEngine.bufferedAheadOf(64)).toBe(0);
     });
   });
 

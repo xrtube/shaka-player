@@ -33,6 +33,7 @@ describe('MediaSourceEngine', function() {
     video = /** @type {!HTMLVideoElement} */ (document.createElement('video'));
     video.width = 600;
     video.height = 400;
+    video.muted = true;
     document.body.appendChild(video);
   });
 
@@ -43,7 +44,7 @@ describe('MediaSourceEngine', function() {
     mediaSourceEngine = new shaka.media.MediaSourceEngine(video);
     mediaSource = /** @type {?} */(mediaSourceEngine)['mediaSource_'];
     expect(video.src).toBeTruthy();
-    await mediaSourceEngine.init({}, false);
+    await mediaSourceEngine.init(new Map(), false);
   });
 
   afterEach(async () => {
@@ -56,13 +57,15 @@ describe('MediaSourceEngine', function() {
 
   function appendInit(type) {
     let segment = generators[type].getInitSegment(Date.now() / 1000);
-    return mediaSourceEngine.appendBuffer(type, segment, null, null);
+    return mediaSourceEngine.appendBuffer(
+        type, segment, null, null, /* hasClosedCaptions */ false);
   }
 
   function append(type, segmentNumber) {
     let segment = generators[type].
         getSegment(segmentNumber, 0, Date.now() / 1000);
-    return mediaSourceEngine.appendBuffer(type, segment, null, null);
+    return mediaSourceEngine.appendBuffer(
+        type, segment, null, null, /* hasClosedCaptions */ false);
   }
 
   function buffered(type, time) {
@@ -87,10 +90,8 @@ describe('MediaSourceEngine', function() {
   }
 
   it('buffers MP4 video', async () => {
-    // Create empty object first and initialize the fields through
-    // [] to allow field names to be expressions.
-    let initObject = {};
-    initObject[ContentType.VIDEO] = getFakeStream(metadata.video);
+    const initObject = new Map();
+    initObject.set(ContentType.VIDEO, getFakeStream(metadata.video));
     await mediaSourceEngine.init(initObject, false);
     await mediaSourceEngine.setDuration(presentationDuration);
     await appendInit(ContentType.VIDEO);
@@ -104,10 +105,8 @@ describe('MediaSourceEngine', function() {
   });
 
   it('removes segments', async () => {
-    // Create empty object first and initialize the fields through
-    // [] to allow field names to be expressions.
-    let initObject = {};
-    initObject[ContentType.VIDEO] = getFakeStream(metadata.video);
+    const initObject = new Map();
+    initObject.set(ContentType.VIDEO, getFakeStream(metadata.video));
     await mediaSourceEngine.init(initObject, false);
     await mediaSourceEngine.setDuration(presentationDuration);
     await appendInit(ContentType.VIDEO);
@@ -128,10 +127,8 @@ describe('MediaSourceEngine', function() {
   });
 
   it('extends the duration', async () => {
-    // Create empty object first and initialize the fields through
-    // [] to allow field names to be expressions.
-    let initObject = {};
-    initObject[ContentType.VIDEO] = getFakeStream(metadata.video);
+    const initObject = new Map();
+    initObject.set(ContentType.VIDEO, getFakeStream(metadata.video));
     await mediaSourceEngine.init(initObject, false);
     await mediaSourceEngine.setDuration(0);
     await appendInit(ContentType.VIDEO);
@@ -152,10 +149,8 @@ describe('MediaSourceEngine', function() {
   });
 
   it('ends the stream, truncating the duration', async () => {
-    // Create empty object first and initialize the fields through
-    // [] to allow field names to be expressions.
-    let initObject = {};
-    initObject[ContentType.VIDEO] = getFakeStream(metadata.video);
+    const initObject = new Map();
+    initObject.set(ContentType.VIDEO, getFakeStream(metadata.video));
     await mediaSourceEngine.init(initObject, false);
     await mediaSourceEngine.setDuration(presentationDuration);
     await appendInit(ContentType.VIDEO);
@@ -176,10 +171,8 @@ describe('MediaSourceEngine', function() {
       p.then(function() { resolutionOrder.push(nextIndex); });
     }
 
-    // Create empty object first and initialize the fields through
-    // [] to allow field names to be expressions.
-    let initObject = {};
-    initObject[ContentType.VIDEO] = getFakeStream(metadata.video);
+    const initObject = new Map();
+    initObject.set(ContentType.VIDEO, getFakeStream(metadata.video));
     mediaSourceEngine.init(initObject, false).then(() => {
       checkOrder(mediaSourceEngine.setDuration(presentationDuration));
       checkOrder(appendInit(ContentType.VIDEO));
@@ -195,10 +188,8 @@ describe('MediaSourceEngine', function() {
   });
 
   it('buffers MP4 audio', async () => {
-    // Create empty object first and initialize the fields through
-    // [] to allow field names to be expressions.
-    let initObject = {};
-    initObject[ContentType.AUDIO] = getFakeStream(metadata.audio);
+    const initObject = new Map();
+    initObject.set(ContentType.AUDIO, getFakeStream(metadata.audio));
     await mediaSourceEngine.init(initObject, false);
     await mediaSourceEngine.setDuration(presentationDuration);
     // NOTE: For some reason, this appendInit never resolves on my Windows VM.
@@ -214,11 +205,9 @@ describe('MediaSourceEngine', function() {
   });
 
   it('buffers MP4 video and audio', async () => {
-    // Create empty object first and initialize the fields through
-    // [] to allow field names to be expressions.
-    let initObject = {};
-    initObject[ContentType.AUDIO] = getFakeStream(metadata.audio);
-    initObject[ContentType.VIDEO] = getFakeStream(metadata.video);
+    const initObject = new Map();
+    initObject.set(ContentType.AUDIO, getFakeStream(metadata.audio));
+    initObject.set(ContentType.VIDEO, getFakeStream(metadata.video));
 
     await mediaSourceEngine.init(initObject, false);
     await mediaSourceEngine.setDuration(presentationDuration);
@@ -271,10 +260,8 @@ describe('MediaSourceEngine', function() {
   });
 
   it('trims content at the append window', async () => {
-    // Create empty object first and initialize the fields through
-    // [] to allow field names to be expressions.
-    let initObject = {};
-    initObject[ContentType.VIDEO] = getFakeStream(metadata.video);
+    const initObject = new Map();
+    initObject.set(ContentType.VIDEO, getFakeStream(metadata.video));
     await mediaSourceEngine.init(initObject, false);
     await mediaSourceEngine.setDuration(presentationDuration);
     await appendInit(ContentType.VIDEO);
@@ -291,10 +278,8 @@ describe('MediaSourceEngine', function() {
   });
 
   it('does not remove when overlap is outside append window', async () => {
-    // Create empty object first and initialize the fields through
-    // [] to allow field names to be expressions.
-    let initObject = {};
-    initObject[ContentType.VIDEO] = getFakeStream(metadata.video);
+    const initObject = new Map();
+    initObject.set(ContentType.VIDEO, getFakeStream(metadata.video));
     await mediaSourceEngine.init(initObject, false);
     await mediaSourceEngine.setDuration(presentationDuration);
     await appendInit(ContentType.VIDEO);
@@ -333,8 +318,8 @@ describe('MediaSourceEngine', function() {
     });
     mediaSourceEngine.setTextDisplayer(mockTextDisplayer);
 
-    let initObject = {};
-    initObject[ContentType.VIDEO] = getFakeStream(metadata.video);
+    const initObject = new Map();
+    initObject.set(ContentType.VIDEO, getFakeStream(metadata.video));
     mediaSourceEngine.setUseEmbeddedText(true);
     // Call with forceTransmuxTS = true, so that it will transmux even on
     // platforms with native TS support.

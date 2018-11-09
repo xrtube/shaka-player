@@ -59,7 +59,8 @@ shaka.extern.RetryParameters;
  *   body: ArrayBuffer,
  *   headers: !Object.<string, string>,
  *   allowCrossSiteCredentials: boolean,
- *   retryParameters: !shaka.extern.RetryParameters
+ *   retryParameters: !shaka.extern.RetryParameters,
+ *   licenseRequestType: ?string
  * }}
  *
  * @description
@@ -81,6 +82,11 @@ shaka.extern.RetryParameters;
  *   requests.  See {@link https://bit.ly/CorsCred}.
  * @property {!shaka.extern.RetryParameters} retryParameters
  *   An object used to define how often to make retries.
+ * @property {?string} licenseRequestType
+ *   If this is a LICENSE request, this field contains the type of license
+ *   request it is (not the type of license).  This is the |messageType| field
+ *   of the EME message.  For example, this could be 'license-request' or
+ *   'license-renewal'.
  *
  * @exportDoc
  */
@@ -123,15 +129,35 @@ shaka.extern.Response;
 
 
 /**
- * Defines a plugin that handles a specific scheme.
- *
  * @typedef {!function(string,
  *                     shaka.extern.Request,
- *                     shaka.net.NetworkingEngine.RequestType):
+ *                     shaka.net.NetworkingEngine.RequestType,
+ *                     shaka.extern.ProgressUpdated=):
  *     !shaka.extern.IAbortableOperation.<shaka.extern.Response>}
+ * @description
+ * Defines a plugin that handles a specific scheme.
+ * The functions accepts four parameters, uri string, request, request type,
+ * and an optional progressUpdated function.
+
  * @exportDoc
  */
 shaka.extern.SchemePlugin;
+
+
+/**
+ * @typedef {function(number, number)}
+ *
+ * @description
+ * A callback function to handle progress event through networking engine in
+ * player.
+ * The first argument is a number for duration in milliseconds, that the request
+ * took to complete.
+ * The second argument is the the total number of bytes downloaded during that
+ * time.
+ *
+ * @exportDoc
+ */
+shaka.extern.ProgressUpdated;
 
 
 /**
